@@ -133,7 +133,7 @@ def _sanitize_chart_preview_for_llm_context(
     if isinstance(content, dict):
         _sanitize_preview_content_for_llm_context(content)
 
-    return cast(ChartPreview, ChartPreview.model_validate(payload))
+    return ChartPreview.model_validate(payload)
 
 
 class ChartLike(Protocol):
