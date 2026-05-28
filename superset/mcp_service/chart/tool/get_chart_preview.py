@@ -133,7 +133,7 @@ def _sanitize_chart_preview_for_llm_context(
     if isinstance(content, dict):
         _sanitize_preview_content_for_llm_context(content)
 
-    return ChartPreview.model_validate(payload)
+    return cast(ChartPreview, ChartPreview.model_validate(payload))
 
 
 class ChartLike(Protocol):
@@ -247,6 +247,7 @@ class PreviewFormatStrategy:
         | ASCIIPreview
         | VegaLitePreview
         | TablePreview
+        | ChartPreview
         | ChartError
     ):
         """Generate preview in the specific format."""
@@ -405,8 +406,7 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
             if hasattr(self.chart, "params") and self.chart.params:
                 from superset.utils import json as utils_json
 
-                result: Dict[str, Any] = utils_json.loads(self.chart.params)
-                return result
+                return cast(Dict[str, Any], utils_json.loads(self.chart.params))
             return None
         except (ValueError, TypeError):
             return None
@@ -566,8 +566,10 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
             if viz_type in viz_types:
                 method_name = f"_{chart_type}_chart_spec"
                 if hasattr(self, method_name):
-                    spec_method = getattr(self, method_name)
-                    return cast(Dict[str, Any], spec_method(fields, field_types))
+                    return cast(
+                        Dict[str, Any],
+                        getattr(self, method_name)(fields, field_types),
+                    )
 
         # Default fallback
         logger.info("Unknown chart type '%s', using scatter plot fallback", viz_type)
@@ -1437,7 +1439,7 @@ async def _get_chart_preview_internal(  # noqa: C901
         )
 
 
-@tool(
+@tool(  # type: ignore[untyped-decorator]
     tags=["data"],
     class_permission_name="Chart",
     annotations=ToolAnnotations(
