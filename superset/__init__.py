@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import superset._flask_compat  # noqa: F401  # Flask 3.x compat shim (must be first)
 from werkzeug.local import LocalProxy
 
 from superset.app import create_app  # noqa: F401
