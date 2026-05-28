@@ -107,7 +107,7 @@ from superset.superset_typing import (
     FormData,
     Metric,
 )
-from superset.utils.backports import StrEnum
+from superset.utils.backports import StrEnum  # type: ignore[attr-defined]
 from superset.utils.database import get_example_database
 from superset.utils.date_parser import parse_human_timedelta
 from superset.utils.hashing import hash_from_dict, hash_from_str
@@ -533,7 +533,7 @@ def markdown(raw: str, markup_wrap: bool | None = False) -> str:
     safe = nh3.clean(safe, tags=safe_markdown_tags, attributes=safe_markdown_attrs)
     if markup_wrap:
         safe = Markup(safe)
-    return safe
+    return cast(str, safe)
 
 
 def sanitize_svg_content(svg_content: str) -> str:
@@ -626,7 +626,7 @@ def generic_find_constraint_name(
 
     for fk in tbl.foreign_key_constraints:
         if fk.referred_table.name == referenced and set(fk.column_keys) == columns:
-            return fk.name
+            return cast("str | None", fk.name)
 
     return None
 
@@ -640,7 +640,7 @@ def generic_find_fk_constraint_name(
             fk["referred_table"] == referenced
             and set(fk["referred_columns"]) == columns
         ):
-            return fk["name"]
+            return cast("str | None", fk["name"])
 
     return None
 
@@ -668,7 +668,7 @@ def generic_find_uq_constraint_name(
 
     for uq in insp.get_unique_constraints(table):
         if columns == set(uq["column_names"]):
-            return uq["name"]
+            return cast("str | None", uq["name"])
 
     return None
 
@@ -751,7 +751,7 @@ timeout: type[TimerTimeout] | type[SigalrmTimeout] = (
 
 
 def pessimistic_connection_handling(some_engine: Engine) -> None:
-    @event.listens_for(some_engine, "engine_connect")
+    @event.listens_for(some_engine, "engine_connect")  # type: ignore[untyped-decorator]
     def ping_connection(connection: Connection, branch: bool) -> None:
         if branch:
             # 'branch' refers to a sub-connection of a connection,
@@ -788,7 +788,7 @@ def pessimistic_connection_handling(some_engine: Engine) -> None:
 
     if some_engine.dialect.name == "sqlite":
 
-        @event.listens_for(some_engine, "connect")
+        @event.listens_for(some_engine, "connect")  # type: ignore[untyped-decorator]
         def set_sqlite_pragma(  # pylint: disable=unused-argument
             connection: sqlite3.Connection,
             *args: Any,
@@ -891,7 +891,7 @@ def send_email_smtp(  # pylint: disable=invalid-name,too-many-arguments,too-many
         msg.attach(image)
     msg_mutator = config["EMAIL_HEADER_MUTATOR"]
     # the base notification returns the message without any editing.
-    new_msg = msg_mutator(msg, **(header_data or {}))
+    new_msg = msg_mutator(msg, **(header_data or {}))  # type: ignore[arg-type]
     new_to = new_msg["To"].split(", ") if "To" in new_msg else []
     new_cc = new_msg["Cc"].split(", ") if "Cc" in new_msg else []
     new_recipients = new_to + new_cc + smtp_mail_bcc
@@ -1217,9 +1217,9 @@ def user_label(user: User) -> str | None:
     """Given a user ORM FAB object, returns a label"""
     if user:
         if user.first_name and user.last_name:
-            return user.first_name + " " + user.last_name
+            return cast(str, user.first_name + " " + user.last_name)
 
-        return user.username
+        return cast(str, user.username)
 
     return None
 
@@ -1230,7 +1230,8 @@ def get_example_default_schema() -> str | None:
     """
     database = get_example_database()
     with database.get_sqla_engine() as engine:
-        return inspect(engine).default_schema_name
+        schema_name: str | None = inspect(engine).default_schema_name
+        return schema_name
 
 
 def backend() -> str:
@@ -1291,7 +1292,7 @@ def get_column_name(column: Column, verbose_map: dict[str, Any] | None = None) -
 
     if isinstance(column, str):
         verbose_map = verbose_map or {}
-        return verbose_map.get(column, column)
+        return cast(str, verbose_map.get(column, column))
 
     raise ValueError("Missing label")
 
@@ -1323,7 +1324,7 @@ def get_metric_name(metric: Metric, verbose_map: dict[str, Any] | None = None) -
 
     if isinstance(metric, str):
         verbose_map = verbose_map or {}
-        return verbose_map.get(metric, metric)
+        return cast(str, verbose_map.get(metric, metric))
 
     raise ValueError(__("Invalid metric object: %(metric)s", metric=str(metric)))
 
@@ -1444,7 +1445,7 @@ def get_username() -> str | None:
     """
 
     try:
-        return g.user.username
+        return cast(str, g.user.username)
     except Exception:  # pylint: disable=broad-except
         return None
 
@@ -1462,7 +1463,7 @@ def get_user_id() -> int | None:
     """
 
     try:
-        return g.user.id
+        return cast(int, g.user.id)
     except Exception:  # pylint: disable=broad-except
         return None
 
@@ -1475,7 +1476,7 @@ def get_user_email() -> str | None:
     """
 
     try:
-        return g.user.email
+        return cast(str, g.user.email)
     except Exception:  # pylint: disable=broad-except
         return None
 
@@ -1677,7 +1678,6 @@ def get_column_name_from_metric(metric: Metric) -> str | None:
     :return: column name if simple metric, otherwise None
     """
     if is_adhoc_metric(metric):
-        metric = cast(AdhocMetric, metric)
         if metric["expressionType"] == AdhocMetricExpressionType.SIMPLE:
             column = metric["column"]
             if column:
@@ -2071,7 +2071,7 @@ def apply_max_row_limit(
     """
     # pylint: disable=import-outside-toplevel
 
-    max_limit = (
+    max_limit: int = (
         app.config["TABLE_VIZ_MAX_ROW_SERVER"]
         if server_pagination
         else app.config["SQL_MAX_ROW"]
@@ -2149,6 +2149,6 @@ def get_user_agent(database: Database, source: QuerySource | None) -> str:
 
     source = source or get_query_source_from_request()
     if user_agent_func := app.config["USER_AGENT_FUNC"]:
-        return user_agent_func(database, source)
+        return cast(str, user_agent_func(database, source))
 
     return DEFAULT_USER_AGENT
