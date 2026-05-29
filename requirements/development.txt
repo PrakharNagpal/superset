@@ -522,6 +522,7 @@ markdown-it-py==3.0.0
 markupsafe==3.0.2
     # via
     #   -c requirements/base-constraint.txt
+    #   flask
     #   jinja2
     #   mako
     #   werkzeug
@@ -1071,7 +1072,7 @@ url-normalize==2.2.1
     # via
     #   -c requirements/base-constraint.txt
     #   requests-cache
-urllib3==2.6.3
+urllib3==2.7.0
     # via
     #   -c requirements/base-constraint.txt
     #   botocore
