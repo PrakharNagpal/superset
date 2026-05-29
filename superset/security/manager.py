@@ -52,7 +52,7 @@ from flask_login import AnonymousUserMixin, LoginManager
 from jwt.api_jwt import _jwt_global_obj
 from sqlalchemy import and_, inspect, or_
 from sqlalchemy.engine.base import Connection
-from sqlalchemy.orm import eagerload
+from sqlalchemy.orm import eagerload, InstanceState
 from sqlalchemy.orm.mapper import Mapper
 from sqlalchemy.orm.query import Query as SqlaQuery
 from sqlalchemy.sql import exists
@@ -1842,7 +1842,7 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
         :return:
         """
         # Check if database name has changed
-        state = inspect(target)
+        state: InstanceState["Database"] = inspect(target)
         history = state.get_history("database_name", True)
         if not history.has_changes() or not history.deleted:
             return
