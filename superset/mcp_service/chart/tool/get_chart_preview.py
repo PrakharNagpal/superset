@@ -1439,7 +1439,7 @@ async def _get_chart_preview_internal(  # noqa: C901
         )
 
 
-@tool(  # type: ignore[untyped-decorator]
+@tool(
     tags=["data"],
     class_permission_name="Chart",
     annotations=ToolAnnotations(
