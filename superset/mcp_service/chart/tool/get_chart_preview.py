@@ -20,7 +20,7 @@ MCP tool: get_chart_preview
 """
 
 import logging
-from typing import Any, Dict, List, Protocol
+from typing import Any, cast, Dict, List, Protocol
 
 from fastmcp import Context
 from sqlalchemy.exc import SQLAlchemyError
@@ -239,7 +239,16 @@ class PreviewFormatStrategy:
         self.chart = chart
         self.request = request
 
-    def generate(self) -> ChartPreview | ChartError:
+    def generate(
+        self,
+    ) -> (
+        URLPreview
+        | InteractivePreview
+        | ASCIIPreview
+        | VegaLitePreview
+        | TablePreview
+        | ChartError
+    ):
         """Generate preview in the specific format."""
         raise NotImplementedError
 
@@ -251,7 +260,7 @@ class URLPreviewStrategy(PreviewFormatStrategy):
         chart = self.chart
         if not chart.id:
             return ChartError(
-                error="URL preview not available for transient charts without an ID",
+                message="URL preview not available for transient charts without an ID",
                 error_type="UnsupportedFormat",
             )
         explore_url = f"{get_superset_base_url()}/explore/?slice_id={chart.id}"
@@ -259,6 +268,7 @@ class URLPreviewStrategy(PreviewFormatStrategy):
             preview_url=explore_url,
             width=self.request.width or 800,
             height=self.request.height or 600,
+            supports_interaction=True,
         )
 
 
@@ -280,7 +290,7 @@ class ASCIIPreviewStrategy(PreviewFormatStrategy):
             # Check if datasource_id is None
             if self.chart.datasource_id is None:
                 return ChartError(
-                    error="Chart has no datasource_id - cannot generate preview",
+                    message="Chart has no datasource_id - cannot generate preview",
                     error_type="InvalidChart",
                 )
 
@@ -311,6 +321,7 @@ class ASCIIPreviewStrategy(PreviewFormatStrategy):
                 ascii_content=ascii_chart,
                 width=self.request.ascii_width or 80,
                 height=self.request.ascii_height or 20,
+                supports_color=False,
             )
 
         except (
@@ -323,7 +334,7 @@ class ASCIIPreviewStrategy(PreviewFormatStrategy):
         ) as e:
             logger.error("ASCII preview generation failed: %s", e)
             return ChartError(
-                error=f"Failed to generate ASCII preview: {str(e)}",
+                message=f"Failed to generate ASCII preview: {str(e)}",
                 error_type="ASCIIError",
             )
 
@@ -341,7 +352,8 @@ class TablePreviewStrategy(PreviewFormatStrategy):
             # Check if datasource_id is None
             if self.chart.datasource_id is None:
                 return ChartError(
-                    error="Chart has no datasource_id - cannot generate table preview",
+                    message="Chart has no datasource_id"
+                    " - cannot generate table preview",
                     error_type="InvalidChart",
                 )
 
@@ -366,6 +378,7 @@ class TablePreviewStrategy(PreviewFormatStrategy):
             return TablePreview(
                 table_data=table_data,
                 row_count=len(data),
+                supports_sorting=False,
             )
 
         except (
@@ -378,7 +391,7 @@ class TablePreviewStrategy(PreviewFormatStrategy):
         ) as e:
             logger.error("Table preview generation failed: %s", e)
             return ChartError(
-                error=f"Failed to generate table preview: {str(e)}",
+                message=f"Failed to generate table preview: {str(e)}",
                 error_type="TableError",
             )
 
@@ -392,7 +405,8 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
             if hasattr(self.chart, "params") and self.chart.params:
                 from superset.utils import json as utils_json
 
-                return utils_json.loads(self.chart.params)
+                result: Dict[str, Any] = utils_json.loads(self.chart.params)
+                return result
             return None
         except (ValueError, TypeError):
             return None
@@ -412,7 +426,7 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
                 chart_obj = None
                 if self.chart.id is None:
                     return ChartError(
-                        error="Chart has no ID - cannot generate Vega-Lite preview",
+                        message="Chart has no ID - cannot generate Vega-Lite preview",
                         error_type="InvalidChart",
                     )
 
@@ -423,7 +437,7 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
 
                 if not chart_obj:
                     return ChartError(
-                        error=f"Chart {self.chart.id} not found for data retrieval",
+                        message=f"Chart {self.chart.id} not found for data retrieval",
                         error_type="ChartNotFound",
                     )
 
@@ -455,7 +469,7 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
 
             if not chart_data or not isinstance(chart_data, list):
                 return ChartError(
-                    error="No data available for Vega-Lite visualization",
+                    message="No data available for Vega-Lite visualization",
                     error_type="NoDataError",
                 )
 
@@ -465,6 +479,7 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
             return VegaLitePreview(
                 type="vega_lite",
                 specification=vega_spec,
+                data_url=None,
                 supports_streaming=False,
             )
 
@@ -480,7 +495,7 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
                 "Error generating Vega-Lite preview for chart %s", self.chart.id
             )
             return ChartError(
-                error=f"Failed to generate Vega-Lite preview: {str(e)}",
+                message=f"Failed to generate Vega-Lite preview: {str(e)}",
                 error_type="VegaLiteGenerationError",
             )
 
@@ -551,7 +566,8 @@ class VegaLitePreviewStrategy(PreviewFormatStrategy):
             if viz_type in viz_types:
                 method_name = f"_{chart_type}_chart_spec"
                 if hasattr(self, method_name):
-                    return getattr(self, method_name)(fields, field_types)
+                    spec_method = getattr(self, method_name)
+                    return cast(Dict[str, Any], spec_method(fields, field_types))
 
         # Default fallback
         logger.info("Unknown chart type '%s', using scatter plot fallback", viz_type)
@@ -1039,7 +1055,7 @@ class PreviewFormatGenerator:
 
         if not strategy_class:
             return ChartError(
-                error=f"Unsupported preview format: {self.request.format}",
+                message=f"Unsupported preview format: {self.request.format}",
                 error_type="UnsupportedFormat",
             )
 
@@ -1128,7 +1144,7 @@ async def _get_chart_preview_internal(  # noqa: C901
                             e,
                         )
                         return ChartError(
-                            error="No cached chart data found for form_data_key. "
+                            message="No cached chart data found for form_data_key. "
                             "The cache may have expired.",
                             error_type="NotFound",
                         )
@@ -1139,7 +1155,7 @@ async def _get_chart_preview_internal(  # noqa: C901
                 )
                 if request.identifier is None:
                     return ChartError(
-                        error="Chart identifier is required",
+                        message="Chart identifier is required",
                         error_type="ValidationError",
                     )
                 chart = find_chart_by_identifier(request.identifier)
@@ -1220,7 +1236,7 @@ async def _get_chart_preview_internal(  # noqa: C901
                 recovery = "Use list_charts to get valid chart IDs."
             safe_id = escape_llm_context_delimiters(str(request.identifier)[:200])
             return ChartError(
-                error=f"No chart found with identifier: {safe_id}. {recovery}",
+                message=f"No chart found with identifier: {safe_id}. {recovery}",
                 error_type="NotFound",
             )
 
@@ -1253,7 +1269,7 @@ async def _get_chart_preview_internal(  # noqa: C901
                     % (validation_result.error,)
                 )
                 return ChartError(
-                    error=validation_result.error
+                    message=validation_result.error
                     or "Chart's dataset is not accessible. Dataset may be deleted.",
                     error_type="DatasetNotAccessible",
                 )
@@ -1347,6 +1363,7 @@ async def _get_chart_preview_internal(  # noqa: C901
             execution_time = int((time.time() - start_time) * 1000)
             performance = PerformanceMetadata(
                 query_duration_ms=execution_time,
+                estimated_cost=None,
                 cache_status="miss",
                 optimization_suggestions=[],
             )
@@ -1375,6 +1392,8 @@ async def _get_chart_preview_internal(  # noqa: C901
             chart_description=_build_chart_description(chart),
             accessibility=accessibility,
             performance=performance,
+            schema_version="2.0",
+            api_version="v1",
         )
 
         return _sanitize_chart_preview_for_llm_context(result)
@@ -1389,7 +1408,7 @@ async def _get_chart_preview_internal(  # noqa: C901
         )
         logger.exception("SQLAlchemy error in get_chart_preview: %s", e)
         return ChartError(
-            error="Database session error while generating chart preview. "
+            message="Database session error while generating chart preview. "
             "Please retry the request.",
             error_type="InternalError",
         )
@@ -1413,7 +1432,8 @@ async def _get_chart_preview_internal(  # noqa: C901
         )
         logger.error("Error in get_chart_preview: %s", e)
         return ChartError(
-            error=f"Failed to get chart preview: {str(e)}", error_type="InternalError"
+            message=f"Failed to get chart preview: {str(e)}",
+            error_type="InternalError",
         )
 
 
@@ -1478,7 +1498,7 @@ async def get_chart_preview(
             % request.identifier
         )
         return ChartError(
-            error=build_oauth2_redirect_message(ex),
+            message=build_oauth2_redirect_message(ex),
             error_type="OAUTH2_REDIRECT",
         )
     except OAuth2Error:
@@ -1486,7 +1506,7 @@ async def get_chart_preview(
             "OAuth2 configuration error: identifier=%s" % request.identifier
         )
         return ChartError(
-            error=OAUTH2_CONFIG_ERROR_MESSAGE,
+            message=OAUTH2_CONFIG_ERROR_MESSAGE,
             error_type="OAUTH2_REDIRECT_ERROR",
         )
     except (
@@ -1507,6 +1527,6 @@ async def get_chart_preview(
             )
         )
         return ChartError(
-            error=f"Failed to generate chart preview: {str(e)}",
+            message=f"Failed to generate chart preview: {str(e)}",
             error_type="InternalError",
         )
